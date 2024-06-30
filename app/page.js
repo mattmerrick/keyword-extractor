@@ -1,113 +1,265 @@
-import Image from "next/image";
+'use client';
+
+import { useState } from 'react';
+import Head from 'next/head';
 
 export default function Home() {
+  const [input, setInput] = useState('');
+  const [text, setText] = useState('');
+  const [url, setUrl] = useState('');
+  const [keywords, setKeywords] = useState({
+    soloKeywords: [],
+    twoWordKeywords: [],
+    threeWordKeywords: [],
+  });
+  const [stats, setStats] = useState({
+    words: 0,
+    characters: 0,
+    charactersNoSpace: 0,
+    syllables: 0,
+    sentences: 0,
+    paragraphs: 0,
+    readingTime: 0,
+    speakingTime: 0,
+  });
+  const [currentPage, setCurrentPage] = useState(0);
+  const itemsPerPage = 10;
+
+  const isValidUrl = (string) => {
+    try {
+      new URL(string);
+      return true;
+    } catch (_) {
+      return false;
+    }
+  };
+
+  const fetchTextFromUrl = async (url) => {
+    try {
+      const response = await fetch(`/api/fetch-text?url=${encodeURIComponent(url)}`);
+      const data = await response.json();
+      return data.text;
+    } catch (error) {
+      console.error('Error fetching text from URL:', error);
+      return '';
+    }
+  };
+
+  const countSyllables = (word) => {
+    word = word.toLowerCase();
+    if (word.length <= 3) return 1;
+    word = word.replace(/(?:[^laeiouy]es|ed|[^laeiouy]e)$/, '');
+    word = word.replace(/^y/, '');
+    const matches = word.match(/[aeiouy]{1,2}/g);
+    return matches ? matches.length : 1;
+  };
+
+  const calculateStats = (text) => {
+    const words = text.split(/\s+/).filter(Boolean);
+    const characters = text.length;
+    const charactersNoSpace = text.replace(/\s+/g, '').length;
+    const syllables = words.reduce((acc, word) => acc + countSyllables(word), 0);
+    const sentences = text.split(/[.!?]/).filter(Boolean).length;
+    const paragraphs = text.split(/\n+/).filter(Boolean).length;
+    const readingTime = Math.ceil(words.length / 200); // average reading speed of 200 words per minute
+    const speakingTime = Math.ceil(words.length / 150); // average speaking speed of 150 words per minute
+
+    return {
+      words: words.length,
+      characters,
+      charactersNoSpace,
+      syllables,
+      sentences,
+      paragraphs,
+      readingTime,
+      speakingTime,
+    };
+  };
+
+  const extractKeywords = (text) => {
+    const words = text.toLowerCase().split(/\s+/);
+
+    const countKeywords = (n) => {
+      const counts = {};
+      for (let i = 0; i <= words.length - n; i++) {
+        const keyword = words.slice(i, i + n).join(' ');
+        if (!counts[keyword]) {
+          counts[keyword] = 0;
+        }
+        counts[keyword]++;
+      }
+      return Object.keys(counts)
+        .map((key) => ({ word: key, count: counts[key] }))
+        .sort((a, b) => b.count - a.count);
+    };
+
+    return {
+      soloKeywords: countKeywords(1),
+      twoWordKeywords: countKeywords(2),
+      threeWordKeywords: countKeywords(3),
+    };
+  };
+
+  const handleExtract = async () => {
+    let extractedText = text;
+    if (isValidUrl(url)) {
+      extractedText = await fetchTextFromUrl(url);
+    } else {
+      extractedText = input;
+    }
+    setText(extractedText);
+    setKeywords(extractKeywords(extractedText));
+    setStats(calculateStats(extractedText));
+  };
+
+  const handleCopy = () => {
+    const textContent = `Three-word Keywords:\n${keywords.threeWordKeywords
+      .map(({ word, count }) => `${word}: ${count}`)
+      .join('\n')}\n\nTwo-word Keywords:\n${keywords.twoWordKeywords
+      .map(({ word, count }) => `${word}: ${count}`)
+      .join('\n')}\n\nSolo Keywords:\n${keywords.soloKeywords
+      .map(({ word, count }) => `${word}: ${count}`)
+      .join('\n')}`;
+    navigator.clipboard.writeText(textContent).then(() => {
+      alert('Keywords copied to clipboard!');
+    }).catch((err) => {
+      console.error('Could not copy text: ', err);
+    });
+  };
+
+  const handleDownload = () => {
+    const csvContent = `data:text/csv;charset=utf-8,Three-word Keywords\n${keywords.threeWordKeywords
+      .map(({ word, count }) => `${word},${count}`)
+      .join('\n')}\n\nTwo-word Keywords\n${keywords.twoWordKeywords
+      .map(({ word, count }) => `${word},${count}`)
+      .join('\n')}\n\nSolo Keywords\n${keywords.soloKeywords
+      .map(({ word, count }) => `${word},${count}`)
+      .join('\n')}`;
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement('a');
+    link.setAttribute('href', encodedUri);
+    link.setAttribute('download', 'keywords.csv');
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  const displayKeywords = (keywordsList) => {
+    const start = currentPage * itemsPerPage;
+    const end = start + itemsPerPage;
+    return keywordsList.slice(start, end).map(({ word, count }, index) => (
+      <div key={index} className="p-2 bg-gradient-to-r from-blue-100 to-blue-200 rounded-lg shadow mb-2">
+        <p className="font-semibold">{word}</p>
+        <p className="text-sm text-gray-700">{count} times</p>
+      </div>
+    ));
+  };
+
   return (
-    <main className="flex min-h-screen flex-col items-center justify-between p-24">
-      <div className="z-10 max-w-5xl w-full items-center justify-between font-mono text-sm lg:flex">
-        <p className="fixed left-0 top-0 flex w-full justify-center border-b border-gray-300 bg-gradient-to-b from-zinc-200 pb-6 pt-8 backdrop-blur-2xl dark:border-neutral-800 dark:bg-zinc-800/30 dark:from-inherit lg:static lg:w-auto  lg:rounded-xl lg:border lg:bg-gray-200 lg:p-4 lg:dark:bg-zinc-800/30">
-          Get started by editing&nbsp;
-          <code className="font-mono font-bold">app/page.js</code>
-        </p>
-        <div className="fixed bottom-0 left-0 flex h-48 w-full items-end justify-center bg-gradient-to-t from-white via-white dark:from-black dark:via-black lg:static lg:h-auto lg:w-auto lg:bg-none">
-          <a
-            className="pointer-events-none flex place-items-center gap-2 p-8 lg:pointer-events-auto lg:p-0"
-            href="https://vercel.com?utm_source=create-next-app&utm_medium=appdir-template&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
+    <div className="min-h-screen bg-gradient-to-r from-gray-100 to-gray-200">
+      <Head>
+        <title>Keyword Extractor</title>
+      </Head>
+      <main className="container mx-auto p-6 bg-white shadow-md rounded-lg">
+        <h1 className="text-4xl font-bold text-center mb-6">Keyword Extractor</h1>
+        <p className="text-center mb-6">Type or paste your text or URL to see the most used keywords</p>
+        <div className="mb-6">
+          <input
+            type="text"
+            className="w-full p-3 mb-4 border rounded"
+            placeholder="Enter URL here..."
+            value={url}
+            onChange={(e) => setUrl(e.target.value)}
+          />
+          <textarea
+            className="w-full p-3 mb-4 border rounded"
+            rows="4"
+            placeholder="Enter text here..."
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+          ></textarea>
+          <button
+            className="bg-blue-500 text-white px-4 py-2 rounded mb-6 hover:bg-blue-600 transition duration-200"
+            onClick={handleExtract}
           >
-            By{" "}
-            <Image
-              src="/vercel.svg"
-              alt="Vercel Logo"
-              className="dark:invert"
-              width={100}
-              height={24}
-              priority
-            />
-          </a>
+            Extract Keywords
+          </button>
         </div>
-      </div>
-
-      <div className="relative flex place-items-center before:absolute before:h-[300px] before:w-full sm:before:w-[480px] before:-translate-x-1/2 before:rounded-full before:bg-gradient-radial before:from-white before:to-transparent before:blur-2xl before:content-[''] after:absolute after:-z-20 after:h-[180px] after:w-full sm:after:w-[240px] after:translate-x-1/3 after:bg-gradient-conic after:from-sky-200 after:via-blue-200 after:blur-2xl after:content-[''] before:dark:bg-gradient-to-br before:dark:from-transparent before:dark:to-blue-700 before:dark:opacity-10 after:dark:from-sky-900 after:dark:via-[#0141ff] after:dark:opacity-40 before:lg:h-[360px] z-[-1]">
-        <Image
-          className="relative dark:drop-shadow-[0_0_0.3rem_#ffffff70] dark:invert"
-          src="/next.svg"
-          alt="Next.js Logo"
-          width={180}
-          height={37}
-          priority
-        />
-      </div>
-
-      <div className="mb-32 grid text-center lg:max-w-5xl lg:w-full lg:mb-0 lg:grid-cols-4 lg:text-left">
-        <a
-          href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template&utm_campaign=create-next-app"
-          className="group rounded-lg border border-transparent px-5 py-4 transition-colors hover:border-gray-300 hover:bg-gray-100 hover:dark:border-neutral-700 hover:dark:bg-neutral-800/30"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <h2 className={`mb-3 text-2xl font-semibold`}>
-            Docs{" "}
-            <span className="inline-block transition-transform group-hover:translate-x-1 motion-reduce:transform-none">
-              -&gt;
-            </span>
-          </h2>
-          <p className={`m-0 max-w-[30ch] text-sm opacity-50`}>
-            Find in-depth information about Next.js features and API.
-          </p>
-        </a>
-
-        <a
-          href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          className="group rounded-lg border border-transparent px-5 py-4 transition-colors hover:border-gray-300 hover:bg-gray-100 hover:dark:border-neutral-700 hover:dark:bg-neutral-800 hover:dark:bg-opacity-30"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <h2 className={`mb-3 text-2xl font-semibold`}>
-            Learn{" "}
-            <span className="inline-block transition-transform group-hover:translate-x-1 motion-reduce:transform-none">
-              -&gt;
-            </span>
-          </h2>
-          <p className={`m-0 max-w-[30ch] text-sm opacity-50`}>
-            Learn about Next.js in an interactive course with&nbsp;quizzes!
-          </p>
-        </a>
-
-        <a
-          href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template&utm_campaign=create-next-app"
-          className="group rounded-lg border border-transparent px-5 py-4 transition-colors hover:border-gray-300 hover:bg-gray-100 hover:dark:border-neutral-700 hover:dark:bg-neutral-800/30"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <h2 className={`mb-3 text-2xl font-semibold`}>
-            Templates{" "}
-            <span className="inline-block transition-transform group-hover:translate-x-1 motion-reduce:transform-none">
-              -&gt;
-            </span>
-          </h2>
-          <p className={`m-0 max-w-[30ch] text-sm opacity-50`}>
-            Explore starter templates for Next.js.
-          </p>
-        </a>
-
-        <a
-          href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template&utm_campaign=create-next-app"
-          className="group rounded-lg border border-transparent px-5 py-4 transition-colors hover:border-gray-300 hover:bg-gray-100 hover:dark:border-neutral-700 hover:dark:bg-neutral-800/30"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <h2 className={`mb-3 text-2xl font-semibold`}>
-            Deploy{" "}
-            <span className="inline-block transition-transform group-hover:translate-x-1 motion-reduce:transform-none">
-              -&gt;
-            </span>
-          </h2>
-          <p className={`m-0 max-w-[30ch] text-sm opacity-50 text-balance`}>
-            Instantly deploy your Next.js site to a shareable URL with Vercel.
-          </p>
-        </a>
-      </div>
-    </main>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-6">
+          <div>
+            <h2 className="text-2xl font-bold mb-2">Three-word Keywords</h2>
+            {displayKeywords(keywords.threeWordKeywords)}
+          </div>
+          <div>
+            <h2 className="text-2xl font-bold mb-2">Two-word Keywords</h2>
+            {displayKeywords(keywords.twoWordKeywords)}
+          </div>
+          <div>
+            <h2 className="text-2xl font-bold mb-2">Solo Keywords - Part 1</h2>
+            {displayKeywords(keywords.soloKeywords)}
+          </div>
+          <div>
+            <h2 className="text-2xl font-bold mb-2">Solo Keywords - Part 2</h2>
+            {displayKeywords(keywords.soloKeywords)}
+          </div>
+        </div>
+        <div className="flex justify-between items-center mb-6">
+          <button
+            className="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600 transition duration-200"
+            disabled={currentPage === 0}
+            onClick={() => setCurrentPage((prev) => prev - 1)}
+          >
+            Previous
+          </button>
+          <button
+            className="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600 transition duration-200"
+            disabled={
+              (currentPage + 1) * itemsPerPage >=
+              Math.max(
+                keywords.soloKeywords.length,
+                keywords.twoWordKeywords.length,
+                keywords.threeWordKeywords.length
+              )
+            }
+            onClick={() => setCurrentPage((prev) => prev + 1)}
+          >
+            Next
+          </button>
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+          <div className="bg-white p-4 rounded-lg shadow-md">
+            <h2 className="text-xl font-bold mb-2">Statistics</h2>
+            <p>Words: {stats.words}</p>
+            <p>Characters: {stats.characters}</p>
+            <p>Characters (no space): {stats.charactersNoSpace}</p>
+            <p>Syllables: {stats.syllables}</p>
+            <p>Sentences: {stats.sentences}</p>
+            <p>Paragraphs: {stats.paragraphs}</p>
+            <p>Reading time: {stats.readingTime} min</p>
+            <p>Speaking time: {stats.speakingTime} min</p>
+          </div>
+        </div>
+        <div className="flex justify-between items-center mb-6">
+          <button
+            className="bg-green-500 text-white px-4 py-2 rounded hover:bg-green-600 transition duration-200"
+            onClick={handleDownload}
+          >
+            Download CSV
+          </button>
+          <button
+            className="bg-yellow-500 text-white px-4 py-2 rounded hover:bg-yellow-600 transition duration-200"
+            onClick={handleCopy}
+          >
+            Copy to Clipboard
+          </button>
+        </div>
+        <footer className="text-center text-gray-600">
+          Powered by{' '}
+          <a href="https://nichetools.net" className="text-blue-500">
+            Niche Tools
+          </a>
+        </footer>
+      </main>
+    </div>
   );
 }
