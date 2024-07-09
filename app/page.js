@@ -253,11 +253,13 @@ export default function Home() {
             Copy to Clipboard
           </button>
         </div>
+        <button>Download The App</button>
         <footer className="text-center text-gray-600">
           Powered by{' '}
           <a href="https://nichetools.net" className="text-blue-500">
             Niche Tools
-          </a>
+          </a><br></br>
+          <a href="/privacy-policy">Privacy Policy</a>
         </footer>
       </main>
     </div>
